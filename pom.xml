@@ -331,6 +331,10 @@
             <plugin>
                 <groupId>org.apache.rat</groupId>
                 <artifactId>apache-rat-plugin</artifactId>
+                    <excludes>
+                        <exclude>.github/workflows/**</exclude>
+                    </excludes>
+                </configuration>
                 <executions>
                     <execution>
                         <phase>verify</phase>
