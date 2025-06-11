@@ -50,6 +50,8 @@ import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 
+import javax.inject.Inject;
+import javax.inject.Named;
 import javax.jcr.NamespaceException;
 import javax.jcr.PropertyType;
 import javax.xml.stream.FactoryConfigurationError;
@@ -96,7 +98,6 @@ import org.apache.maven.execution.MavenSession;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
 import org.apache.maven.plugin.descriptor.PluginDescriptor;
-import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
@@ -140,18 +141,6 @@ public class GenerateMetadataMojo extends AbstractMetadataPackageMojo {
      *  @see <a href="https://issues.apache.org/jira/browse/JCR-4267">JCR-4267</a>
      */
     private final DateFormat iso8601DateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
-
-    /**
-     * For m2e incremental build support
-     */
-    @Component
-    private BuildContext buildContext;
-
-    /**
-     * For correct source of standard embedded path base name.
-     */
-    @Component(hint = "default")
-    private ArtifactRepositoryLayout embedArtifactLayout;
 
     /**
      * The Maven session.
@@ -458,9 +447,6 @@ public class GenerateMetadataMojo extends AbstractMetadataPackageMojo {
             required = true)
     boolean allowIndexDefinitions;
 
-    @Component
-    private RepositorySystem repoSystem;
-
     @Parameter( defaultValue = "${repositorySystemSession}", readonly = true, required = true )
     private RepositorySystemSession repoSession;
 
@@ -475,14 +461,31 @@ public class GenerateMetadataMojo extends AbstractMetadataPackageMojo {
     @Parameter(defaultValue="")
     List<ArtifactCoordinates> installHooks;
 
+
+    /**
+     * For m2e incremental build support
+     */
+    private final BuildContext buildContext;
+
+    /**
+     * For correct source of standard embedded path base name.
+     */
+    private final ArtifactRepositoryLayout embedArtifactLayout;
+
+    private final RepositorySystem repoSystem;
+
     // take the first "-" followed by a digit as separator between version suffix and rest
     private static final Pattern FILENAME_PATTERN_WITHOUT_VERSION_IN_GROUP1 = Pattern.compile("((?!-\\d).*-)\\d.*");
 
 
-    public GenerateMetadataMojo() {
+    @Inject
+    public GenerateMetadataMojo(BuildContext buildContext, @Named("default")ArtifactRepositoryLayout embedArtifactLayout, RepositorySystem repoSystem) {
         super();
         // always emit dates in UTC timezone
         iso8601DateFormat.setTimeZone(TimeZone.getTimeZone("GMT"));
+        this.buildContext = buildContext;
+        this.embedArtifactLayout = embedArtifactLayout;
+        this.repoSystem = repoSystem;
     }
 
     /**
@@ -1021,7 +1024,7 @@ public class GenerateMetadataMojo extends AbstractMetadataPackageMojo {
                 }
             }
             if (emb.getDestFileName() != null && artifacts.size() > 1) {
-                getLog().warn("destFileName defined but several artifacts match for " + emb);
+                throw new MojoFailureException("destFileName defined but several artifacts match for " + emb);
             }
 
             String targetPath = emb.getTarget();
@@ -1048,40 +1051,18 @@ public class GenerateMetadataMojo extends AbstractMetadataPackageMojo {
                 final File source = artifact.getFile();
                 String destFileName = emb.getDestFileName();
 
-                // todo: add support for patterns
                 if (destFileName == null) {
-                    // If the <destFileName> param is not specified...
-                    if (!source.isDirectory()) {
-                        // If the artifact file is not a directory, defer to File.getName().
-                        destFileName = source.getName();
-                    } else {
-                        // If the dependency file is a directory, the final artifact file has not yet been packaged.
-                        // Construct a fallback file name from the artifact coordinates.
-                        final String layoutBaseName = Text.getName(embedArtifactLayout.pathOf(artifact));
-                        // Look for a peer module in the session that the artifact is attached to.
-                        final MavenProject peerModule = findModuleForArtifact(artifact);
-                        if (peerModule != null) {
-                            // determine the finalName of the artifact, which is ${artifactId}-${version} by default.
-                            final Artifact attached = peerModule.getArtifact();
-                            final String defaultFinalName = attached.getArtifactId() + "-" + attached.getVersion();
-                            final String peerFinalName = peerModule.getBuild().getFinalName();
-                            if (peerFinalName != null) {
-                                // remove the default finalName from the beginning of the layout basename, and
-                                // prepend the specified finalName to create the destFileName.
-                                destFileName = peerFinalName + layoutBaseName.substring(defaultFinalName.length());
-                            }
-                        }
-                        // If destFileName is still null, fallback to layoutBaseName.
-                        if (destFileName == null) {
-                            destFileName = layoutBaseName;
-                        }
-                    }
+                    // construct final name from artifact coordinates
+                    destFileName = Text.getName(embedArtifactLayout.pathOf(artifact));
                 }
                 final String targetPathName = targetPath + destFileName;
                 final String targetNodePathName = targetPathName.substring(Constants.ROOT_DIR.length());
 
+                File oldSource = fileMap.put(targetPathName, source);
+                if (oldSource != null) {
+                    throw new MojoFailureException(String.format("Duplicate target path %s for %s and %s", targetPathName, source, oldSource));
+                }
                 getLog().info(String.format("Embedding %s (from %s) -> %s", artifact.getId(), source.getAbsolutePath(), targetPathName));
-                fileMap.put(targetPathName, source);
 
                 if (emb.isFilter()) {
                     addEmbeddedFileToFilter(targetNodePathName, emb.isAllVersionsFilter());

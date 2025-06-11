@@ -24,7 +24,7 @@
         <groupId>org.apache.jackrabbit.vault</groupId>
         <artifactId>parent</artifactId>
         <relativePath />
-        <version>3.7.2</version>
+        <version>3.8.2</version>
     </parent>
 
     <!-- ====================================================================== -->
@@ -32,21 +32,22 @@
     <!-- ====================================================================== -->
     <groupId>org.apache.jackrabbit</groupId>
     <artifactId>filevault-package-maven-plugin</artifactId>
-    <version>1.3.7-SNAPSHOT</version>
+    <version>1.4.1-SNAPSHOT</version>
     <packaging>maven-plugin</packaging>
 
     <name>Apache Jackrabbit FileVault - Package Maven Plugin</name>
     <description>Maven Plugin supporting creation of content packages.</description>
 
     <properties>
-        <maven.version>3.3.9</maven.version> <!-- required for https://issues.apache.org/jira/browse/MNG-5440 -->
+        <maven.version>3.6.3</maven.version> <!-- required for executing ITs with maven-failsafe-p 3.3.0 -->
         <aether.version>1.0.2.v20150114</aether.version> <!-- should be the version exported by the maven.version, https://github.com/apache/maven/blob/bb52d8502b132ec0a5a3f4c09453c07478323dc5/pom.xml#L64 -->
         <slf4j.version>1.7.5</slf4j.version> <!-- should be the version exported by the maven.version, https://github.com/apache/maven/blob/bb52d8502b132ec0a5a3f4c09453c07478323dc5/pom.xml#L65 -->
         <filevault.version>${project.parent.version}</filevault.version> <!-- must be equal to parent version -->
         <maven.compiler.release>8</maven.compiler.release>
-        <project.build.outputTimestamp>2023-11-13T16:28:26Z</project.build.outputTimestamp>
+        <project.build.outputTimestamp>2024-09-25T18:24:01Z</project.build.outputTimestamp>
         <doxiaVersion>2.0.0-M10-SNAPSHOT</doxiaVersion>
-        <doxiaSitetoolsVersion>2.0.0-M17</doxiaSitetoolsVersion>
+        <doxiaSitetoolsVersion>2.0.0-M17</doxiaSitetoolsVersion> 
+        <version.maven-plugin-tools>3.15.0</version.maven-plugin-tools>
     </properties>
 
     <prerequisites>
@@ -159,7 +160,7 @@
             <plugin>
                 <groupId>org.eclipse.sisu</groupId>
                 <artifactId>sisu-maven-plugin</artifactId>
-                <version>0.3.5</version>
+                <version>0.9.0.M3</version>
                 <executions>
                     <execution>
                         <id>index-project</id>
@@ -416,6 +417,11 @@
             <plugin>
                 <groupId>org.apache.rat</groupId>
                 <artifactId>apache-rat-plugin</artifactId>
+                    <configuration>
+                    <excludes>
+                        <exclude>.github/workflows/**</exclude>
+                    </excludes>
+                    </configuration>
                 <executions>
                     <execution>
                         <phase>verify</phase>
@@ -673,7 +679,7 @@
         <dependency>
             <groupId>org.apache.maven.shared</groupId>
             <artifactId>maven-filtering</artifactId>
-            <version>3.3.1</version>
+            <version>3.4.0</version>
             <scope>compile</scope>
             <exclusions>
               <exclusion>
@@ -828,8 +834,6 @@
                                                 <include name="target/*-source-release.zip*" />
                                             </fileset>
                                         </copy>
-                                        <!-- in check-release.sh we check against the SHA1, we need it in the Maven property, the file can be disregarded -->
-                                        <checksum file="${basedir}/target/${project.artifactId}-${project.version}-source-release.zip" algorithm="SHA1" property="checksum" />
                                         <echo file="${basedir}/target/vote.txt"><![CDATA[
 From: ${username}@apache.org
 To: dev@jackrabbit.apache.org
@@ -846,7 +850,7 @@ https://github.com/apache/jackrabbit-filevault-package-maven-plugin/tree/filevau
 The release notes can be found in JIRA at https://issues.apache.org/jira/secure/ReleaseNote.jspa?projectId=12314920&version=...
 
 The command for running automated checks against this release candidate is:
-$ sh check-release.sh filevault-plugin ${project.version} ${checksum}
+$ sh check-release.sh filevault-plugin ${project.version}
 
 A staged Maven repository is available for review at:
 https://repository.apache.org/content/repositories/orgapachejackrabbit-...

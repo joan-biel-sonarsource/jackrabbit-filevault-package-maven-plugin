@@ -32,10 +32,17 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import javax.inject.Inject;
+import javax.inject.Named;
+
+import org.apache.jackrabbit.filevault.maven.packaging.CompositeInterpolatorCustomizer;
 import org.apache.jackrabbit.filevault.maven.packaging.Filters;
+import org.apache.jackrabbit.filevault.maven.packaging.InterpolatorCustomizerFactory;
 import org.apache.jackrabbit.filevault.maven.packaging.impl.ContentPackageArchiver;
 import org.apache.jackrabbit.filevault.maven.packaging.impl.PlexusIoNonExistingDirectoryResource;
 import org.apache.jackrabbit.vault.fs.api.PathFilterSet;
@@ -51,7 +58,6 @@ import org.apache.maven.execution.MavenSession;
 import org.apache.maven.model.Resource;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
-import org.apache.maven.plugins.annotations.Component;
 import org.apache.maven.plugins.annotations.LifecyclePhase;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
@@ -63,6 +69,7 @@ import org.apache.maven.shared.filtering.MavenResourcesFiltering;
 import org.codehaus.plexus.archiver.FileSet;
 import org.codehaus.plexus.archiver.jar.ManifestException;
 import org.codehaus.plexus.archiver.util.DefaultFileSet;
+import org.codehaus.plexus.interpolation.Interpolator;
 import org.codehaus.plexus.util.DirectoryScanner;
 import org.codehaus.plexus.util.FileUtils;
 import org.codehaus.plexus.util.MatchPatterns;
@@ -83,9 +90,6 @@ public class VaultMojo extends AbstractSourceAndMetadataPackageMojo {
     private static final Collection<File> STATIC_META_INF_FILES = Arrays.asList(new File(Constants.META_DIR, Constants.CONFIG_XML),
             new File(Constants.META_DIR, Constants.SETTINGS_XML));
 
-    @Component
-    private ArtifactHandlerManager artifactHandlerManager;
-    
     /**
      * The directory that contains additional files and folders to end up in the package's META-INF folder.
      * Every file and subfolder is considered except for the subfolder named {@code vault} and a file named {@code MANIFEST.MF}.
@@ -215,14 +219,20 @@ public class VaultMojo extends AbstractSourceAndMetadataPackageMojo {
     @Parameter
     private MavenArchiveConfiguration archive;
 
-    /**
-     */
-    @Component(role = MavenResourcesFiltering.class, hint = "default") 
-    MavenResourcesFiltering mavenResourcesFiltering;
+    private final MavenProjectHelper projectHelper;
+    private final ArtifactHandlerManager artifactHandlerManager;
+    final MavenResourcesFiltering mavenResourcesFiltering;
+    final Set<InterpolatorCustomizerFactory> interpolationCustomizerFactory;
 
-    @Component
-    private MavenProjectHelper projectHelper;
-
+    @Inject
+    VaultMojo(MavenProjectHelper projectHelper, ArtifactHandlerManager artifactHandlerManager, 
+            @Named("default")MavenResourcesFiltering mavenResourcesFiltering, Set<InterpolatorCustomizerFactory> interpolationCustomizerFactory) {
+         this.projectHelper = projectHelper;
+         this.artifactHandlerManager = artifactHandlerManager;
+         this.mavenResourcesFiltering = mavenResourcesFiltering;
+         this.interpolationCustomizerFactory = interpolationCustomizerFactory;
+    }
+    
     /** All file names (relative to the zip root) which are supposed to not get overwritten in the package. The value is the source file. */
     private Map<File, File> protectedFiles = new HashMap<>();
 
@@ -282,7 +292,6 @@ public class VaultMojo extends AbstractSourceAndMetadataPackageMojo {
         }
         getLog().debug("Adding file " + getProjectRelativeFilePath(sourceFile) + " to package at " + destFileName + "'");
         archiver.addFile(sourceFile, destFileName);
-
     }
 
     /**
@@ -294,9 +303,9 @@ public class VaultMojo extends AbstractSourceAndMetadataPackageMojo {
      */
     protected void addFileSetToArchive(MavenResourcesExecution mavenResourcesExecution, ContentPackageArchiver archiver, DefaultFileSet fileSet) throws MavenFilteringException {
         // ignore directories added with no prefix (workDirectory)
-        if ((fileSet.getPrefix().startsWith(Constants.ROOT_DIR) && enableJcrRootFiltering) ||
-            (fileSet.getPrefix().startsWith(Constants.META_INF) && enableMetaInfFiltering)) {
-            
+        String prefix = fileSet.getPrefix();
+        if (prefix != null && ((prefix.startsWith(Constants.ROOT_DIR) && enableJcrRootFiltering) ||
+            (prefix.startsWith(Constants.META_INF) && enableMetaInfFiltering))) {
             getLog().info("Apply filtering to FileSet below " + getProjectRelativeFilePath(fileSet.getDirectory()));
             Resource filteringSourceResource = new Resource();
             filteringSourceResource.setDirectory(fileSet.getDirectory().getPath());
@@ -420,11 +429,9 @@ public class VaultMojo extends AbstractSourceAndMetadataPackageMojo {
         return overwrittenFiles;
     }
 
-    protected MavenResourcesExecution setupMavenResourcesExecution() {
+    protected MavenResourcesExecution setupMavenResourcesExecution() throws MavenFilteringException {
         MavenResourcesExecution mavenResourcesExecution = new MavenResourcesExecution();
         mavenResourcesExecution.setEncoding(resourceEncoding);
-        mavenResourcesExecution.setEscapeString(escapeString);
-        mavenResourcesExecution.setSupportMultiLineFiltering(supportMultiLineFiltering);
         mavenResourcesExecution.setMavenProject(project);
 
         // if these are NOT set, just use the defaults, which are '${*}' and '@'.
@@ -444,7 +451,11 @@ public class VaultMojo extends AbstractSourceAndMetadataPackageMojo {
         mavenResourcesExecution.setSupportMultiLineFiltering(supportMultiLineFiltering);
         mavenResourcesExecution.setAddDefaultExcludes(addDefaultExcludes);
         mavenResourcesExecution.setOverwrite(true);
+        // cannot use default filter wrappers due to https://issues.apache.org/jira/browse/MSHARED-1412
         mavenResourcesExecution.setUseDefaultFilterWrappers(true);
+        // rather use a custom wrapper which allows to customize the interpolator
+        Collection<Consumer<Interpolator>> interpolatorCustomizers = interpolationCustomizerFactory.stream().map( f -> f.create(session, project)).collect(Collectors.toList());
+        mavenResourcesExecution.setInterpolatorCustomizer(new CompositeInterpolatorCustomizer(interpolatorCustomizers));
         return mavenResourcesExecution;
     }
 
@@ -453,8 +464,8 @@ public class VaultMojo extends AbstractSourceAndMetadataPackageMojo {
     public void execute() throws MojoExecutionException, MojoFailureException {
         final File finalFile = getZipFile(outputDirectory, finalName, classifier);
 
-        MavenResourcesExecution mavenResourcesExecution = setupMavenResourcesExecution();
         try {
+            MavenResourcesExecution mavenResourcesExecution = setupMavenResourcesExecution();
             ContentPackageArchiver contentPackageArchiver = new ContentPackageArchiver();
             contentPackageArchiver.setEncoding(resourceEncoding);
 

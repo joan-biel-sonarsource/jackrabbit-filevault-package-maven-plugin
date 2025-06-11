@@ -59,3 +59,26 @@ An example configuration which enables filtering on all `.content.xml` files in 
 </plugin>
 ```
 
+Filtering Extensions
+-----
+
+Extensions allow to improve the simple placeholder replacement offered by Maven with domain specific features (useful for content packages). All features are opt-in and need to be explicitly enabled with a dedicated expression(-prefix).
+
+### Standard Extensions
+
+The following extensions ship with the ${project.artifactId}
+
+Extension | Description | Expression | Usage Example | Since
+--- | --- | --- | --- | ---
+FileVault DocView XML Attribute Escaping | Escapes the interpolated value of the suffix according to [FileVault DocView Escaping Rules](https://jackrabbit.apache.org/filevault/docview.html#Escaping) for using it inside XML attribute values. | `vltattributeescape.<suffix>` | `<myNode myProperty="${vltattributeescape.customMavenProperty1}" />` | 1.4.0
+
+### Custom Extensions
+
+The filtering may be extended through JSR-330 annotated [Sisu][sisu] components implementing the interface [`org.apache.jackrabbit.filevault.maven.packaging.InterpolatorCustomizerFactory`](apidocs/org/apache/jackrabbit/filevault/maven/packaging/InterpolatorCustomizerFactory.html) which creates a `Consumer<Interpolator>` for every Maven project. That callback is called whenever the interpolator has been created for filtering but before it is being applied. A `InterpolatorCustomizerFactory` usually registers additional [`InterpolationPostProcessor`s][codehaus-interpolationpostprocessor] or [`ValueSource`s][codehaus-valuesource] on the given [`Interpolator`][codehaus-interpolator].
+
+They need to be loaded as [plugin dependencies](https://maven.apache.org/guides/mini/guide-configuring-plugins.html#Using_the_.3Cdependencies.3E_Tag).
+
+[codehaus-interpolator]: https://codehaus-plexus.github.io/plexus-interpolation/apidocs/org/codehaus/plexus/interpolation/Interpolator.html
+[codehaus-valuesource]: https://codehaus-plexus.github.io/plexus-interpolation/apidocs/org/codehaus/plexus/interpolation/ValueSource.html
+[codehaus-interpolationpostprocessor]: https://codehaus-plexus.github.io/plexus-interpolation/apidocs/org/codehaus/plexus/interpolation/InterpolationPostProcessor.html
+[sisu]: https://eclipse.dev/sisu/org.eclipse.sisu.inject/index.html
