@@ -8,7 +8,7 @@
 [![SonarCloud Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=apache_jackrabbit-filevault-package-maven-plugin&metric=vulnerabilities)](https://sonarcloud.io/component_measures/metric/security_rating/list?id=apache_jackrabbit-filevault-package-maven-plugin)
 
 Welcome to Apache Jackrabbit FileVault Package Maven Plugin
-===========================================================
+===============================================================
 
 The Apache Jackrabbit FileVault Package Maven Plugin is an Apache Maven Plugin 
 that simplifies the creation of content package Maven artifacts. The content 
